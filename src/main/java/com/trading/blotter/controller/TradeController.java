@@ -70,7 +70,7 @@ public class TradeController {
                 ? Set.of(tradeIds.split(","))
                 : Collections.emptySet();
 
-        return priceStreamService.getPriceStream()
+        return priceStreamService.getPriceStream(subscribedTrades)
                 .filter(update -> subscribedTrades.isEmpty() ||
                         subscribedTrades.contains(update.getTradeId()))  // ADD THIS
                 .map(update -> ServerSentEvent.<PriceUpdate>builder()

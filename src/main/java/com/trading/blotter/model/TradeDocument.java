@@ -22,6 +22,7 @@ import java.util.Map;
 public class TradeDocument {
 
     @Id
+    @Field(type = FieldType.Keyword)
     private String tradeId;
 
     @Field(type = FieldType.Keyword)

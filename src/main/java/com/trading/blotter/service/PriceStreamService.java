@@ -10,6 +10,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
 import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.LockSupport;
 
@@ -37,21 +38,22 @@ public class PriceStreamService {
     }
 
     public PriceStreamService() {
-        startPriceGenerator();
+        //startPriceGenerator();
     }
 
-    public Flux<PriceUpdate> getPriceStream() {
+    public Flux<PriceUpdate> getPriceStream(Set<String> subscribedTrades) {
+        startPriceGenerator(subscribedTrades);
         return priceSink.asFlux()
                 .doOnSubscribe(s -> log.info("New SSE subscriber connected"))
                 .doOnCancel(() -> log.info("SSE subscriber disconnected"))
                 .doOnError(error -> log.error("Error in price stream", error));
     }
 
-    private void startPriceGenerator() {
+    private void startPriceGenerator(Set<String> subscribedTrades) {
         // Simulate price ticks every 1000ms
         Flux.interval(Duration.ofMillis(500))
                 .onBackpressureDrop(tick -> log.warn("Dropping price tick due to backpressure"))
-                .map(tick -> generatePriceUpdate())
+                .map(tick -> generatePriceUpdate(subscribedTrades))
                 .subscribe(
                         update -> {
                             /*Sinks.EmitResult result = priceSink.tryEmitNext(update);
@@ -59,12 +61,13 @@ public class PriceStreamService {
                                 log.warn("Failed to emit price update: {}", result);
                             }*/
                             Sinks.EmitResult result = priceSink.tryEmitNext(update);
+                            log.debug("mit price update: {}", update);
                             while (result == Sinks.EmitResult.FAIL_OVERFLOW) {
                                 log.debug("Buffer full, retrying...");
                                 LockSupport.parkNanos(10_000_000); // 10ms
                                 result = priceSink.tryEmitNext(update);
                             }
-                            if (result.isFailure() && result != Sinks.EmitResult.FAIL_OVERFLOW) {
+                            if (result.isFailure()) {
                                 log.warn("Failed to emit price update: {}", result);
                             }
                         },
@@ -74,9 +77,15 @@ public class PriceStreamService {
         log.info("Price tick generator started");
     }
 
-    private PriceUpdate generatePriceUpdate() {
+    private PriceUpdate generatePriceUpdate(Set<String> subscribedTrades) {
         // Randomly select a trade to update (simulating 100k trades)
-        String tradeId = "TRD" + String.format("%06d", random.nextInt(100000) + 1);
+       // String tradeId = "TRD" + String.format("%06d", random.nextInt(100000) + 1);
+
+        int randomIndex = random.nextInt(subscribedTrades.size());
+        String tradeId = subscribedTrades.stream()
+                .skip(randomIndex)
+                .findFirst()
+                .orElseThrow();
 
         // Get or initialize price state
         PriceState state = priceCache.computeIfAbsent(tradeId, k ->
