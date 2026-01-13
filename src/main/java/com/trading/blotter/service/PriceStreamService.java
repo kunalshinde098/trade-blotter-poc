@@ -11,12 +11,14 @@ import java.math.RoundingMode;
 import java.time.Duration;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.LockSupport;
 
 @Service
 @Slf4j
 public class PriceStreamService {
 
-    private final Sinks.Many<PriceUpdate> priceSink = Sinks.many().multicast().onBackpressureBuffer(256);
+    //private final Sinks.Many<PriceUpdate> priceSink = Sinks.many().multicast().onBackpressureBuffer(256);
+    private final Sinks.Many<PriceUpdate> priceSink = Sinks.many().multicast().onBackpressureBuffer(1024, false);
     private final Random random = new Random();
     private final ConcurrentHashMap<String, PriceState> priceCache = new ConcurrentHashMap<>();
 
@@ -46,14 +48,23 @@ public class PriceStreamService {
     }
 
     private void startPriceGenerator() {
-        // Simulate price ticks every 500ms
-        Flux.interval(Duration.ofMillis(500))
+        // Simulate price ticks every 1000ms
+        Flux.interval(Duration.ofMillis(1000))
                 .onBackpressureDrop(tick -> log.warn("Dropping price tick due to backpressure"))
                 .map(tick -> generatePriceUpdate())
                 .subscribe(
                         update -> {
-                            Sinks.EmitResult result = priceSink.tryEmitNext(update);
+                            /*Sinks.EmitResult result = priceSink.tryEmitNext(update);
                             if (result.isFailure()) {
+                                log.warn("Failed to emit price update: {}", result);
+                            }*/
+                            Sinks.EmitResult result = priceSink.tryEmitNext(update);
+                            while (result == Sinks.EmitResult.FAIL_OVERFLOW) {
+                                log.debug("Buffer full, retrying...");
+                                LockSupport.parkNanos(10_000_000); // 10ms
+                                result = priceSink.tryEmitNext(update);
+                            }
+                            if (result.isFailure() && result != Sinks.EmitResult.FAIL_OVERFLOW) {
                                 log.warn("Failed to emit price update: {}", result);
                             }
                         },

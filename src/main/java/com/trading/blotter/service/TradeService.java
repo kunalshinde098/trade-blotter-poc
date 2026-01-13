@@ -27,8 +27,16 @@ public class TradeService {
     private final ReactiveElasticsearchOperations elasticsearchTemplate;
 
     public Mono<TradeSearchResponse> searchTrades(TradeSearchRequest request) {
-        log.info("Searching trades with {} requested fields",
-                request.getRequestedFields() != null ? request.getRequestedFields().size() : "all");
+        log.info("Searching trades - pageSize: {}, requestedFields: {}, searchAfter: {}",
+                request.getPageSize(),
+                request.getRequestedFields() != null ? request.getRequestedFields().size() : "all",
+                request.getSearchAfter() != null ? "present" : "null");
+
+        // Validate pageSize to prevent excessive queries
+        if (request.getPageSize() > 1000) {
+            log.warn("PageSize {} exceeds maximum, limiting to 1000", request.getPageSize());
+            request.setPageSize(1000);
+        }
 
         NativeQuery query = buildQuery(request);
 
@@ -41,6 +49,14 @@ public class TradeService {
 
                     Object[] lastSearchAfter = hits.isEmpty() ? null :
                             hits.get(hits.size() - 1).getSortValues().toArray();
+
+                    // hasMore is true ONLY if we got a FULL page
+                    boolean hasMore = trades.size() >= request.getPageSize();
+
+                    log.info("Returning {} trades, hasMore: {}, lastSearchAfter: {}",
+                            trades.size(),
+                            hasMore,
+                            lastSearchAfter != null ? "present" : "null");
 
                     return TradeSearchResponse.builder()
                             .trades(trades)
