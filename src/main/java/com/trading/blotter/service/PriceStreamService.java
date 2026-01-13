@@ -49,7 +49,7 @@ public class PriceStreamService {
 
     private void startPriceGenerator() {
         // Simulate price ticks every 1000ms
-        Flux.interval(Duration.ofMillis(1000))
+        Flux.interval(Duration.ofMillis(500))
                 .onBackpressureDrop(tick -> log.warn("Dropping price tick due to backpressure"))
                 .map(tick -> generatePriceUpdate())
                 .subscribe(

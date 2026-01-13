@@ -17,7 +17,9 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/trades")
@@ -61,20 +63,21 @@ public class TradeController {
      * - Simpler backpressure handling
      */
     @GetMapping(value = "/prices/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux<ServerSentEvent<PriceUpdate>> streamPrices() {
+    public Flux<ServerSentEvent<PriceUpdate>> streamPrices(
+            @RequestParam(required = false) String tradeIds) {  // ADD THIS
+
+        Set<String> subscribedTrades = tradeIds != null
+                ? Set.of(tradeIds.split(","))
+                : Collections.emptySet();
+
         return priceStreamService.getPriceStream()
+                .filter(update -> subscribedTrades.isEmpty() ||
+                        subscribedTrades.contains(update.getTradeId()))  // ADD THIS
                 .map(update -> ServerSentEvent.<PriceUpdate>builder()
                         .id(String.valueOf(update.getTimestamp()))
                         .event("price-update")
                         .data(update)
                         .build())
-                .timeout(Duration.ofMinutes(30), Flux.empty())
-                .doOnCancel(() -> log.info("SSE client disconnected"))
-                .doOnComplete(() -> log.info("SSE stream completed"));
-    }
-
-    @GetMapping("/health")
-    public Mono<String> health() {
-        return Mono.just("OK");
+                .timeout(Duration.ofMinutes(30), Flux.empty());
     }
 }
